@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
+	cryptoRand "crypto/rand"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/pkg/errors"
@@ -42,11 +46,20 @@ func main() {
 	hostname, err := os.Hostname()
 	exitIfError(err, "failed to get hostname")
 
-	err = generateTasks(hostname)
-	exitIfError(err, "failed generate tasks")
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	for i := 0; i < int(viper.GetUint32("number_of_workers")); i++ {
+		go func(workerId uint32) {
+			err := generateTasks(ctx, hostname, workerId)
+			exitIfError(err, "failed generate tasks")
+		}(uint32(i))
+	}
+
+	<-ctx.Done()
 }
 
-func generateTasks(producerId string) error {
+func generateTasks(ctx context.Context, producerId string, workerId uint32) error {
 	largeTaskPercentage := viper.GetInt("large_task_percentage")
 	largeTaskMinSize := int(viper.GetSizeInBytes("large_task_min_size"))
 	largeTaskMaxSize := int(viper.GetSizeInBytes("large_task_max_size"))
@@ -54,9 +67,14 @@ func generateTasks(producerId string) error {
 	smallTaskMaxSize := int(viper.GetSizeInBytes("small_task_max_size"))
 
 	for {
+		if ctx.Err() != nil {
+			log.Info("canceled")
+			return nil
+		}
+
 		metadata := taskMetadata{
 			producerId:  producerId,
-			workerId:    0,
+			workerId:    workerId,
 			taskId:      rand.Uint64(),
 			generatedAt: time.Now(),
 		}
@@ -76,7 +94,7 @@ func generateTasks(producerId string) error {
 
 		metadataBytes, err := json.Marshal(metadata)
 		if err != nil {
-			return errors.Wrap(err, "failed to create task data")
+			return errors.Wrap(err, "failed to encode task metadata")
 		}
 
 		finalData := append(data, metadataBytes...)
@@ -100,7 +118,7 @@ func getTaskDataWithSizeHeader(minDataSize int, maxDataSize int) ([]byte, error)
 	dataSize := minDataSize + rand.Intn(maxDataSize-minDataSize)
 	data := make([]byte, sizeHeaderSizeInBytes+dataSize)
 
-	if _, err := rand.Read(data[sizeHeaderSizeInBytes:cap(data)]); err != nil {
+	if _, err := cryptoRand.Read(data[sizeHeaderSizeInBytes:cap(data)]); err != nil {
 		return nil, errors.Wrap(err, "failed to generate task data")
 	}
 

@@ -5,9 +5,9 @@ services:
     build:
       context: .
       dockerfile: producer/Dockerfile
-    init: true
     environment:
       METRICS_PORT: 8888
+      NUMBER_OF_WORKERS: 2
       SMALL_TASK_MIN_SIZE: 100
       SMALL_TASK_MAX_SIZE: 1000
     expose:
