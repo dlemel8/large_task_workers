@@ -10,3 +10,13 @@ services:
       METRICS_PORT: 8888
       SMALL_TASK_MIN_SIZE: 100
       SMALL_TASK_MAX_SIZE: 1000
+    expose:
+      - 8888
+    scale: 2
+
+  prometheus:
+    image: prom/prometheus:v2.1.0
+    volumes:
+      - $PWD/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "127.0.0.1:9090:9090"
