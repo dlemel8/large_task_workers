@@ -1,0 +1,12 @@
+version: '3.9'
+
+services:
+  producer:
+    build:
+      context: .
+      dockerfile: producer/Dockerfile
+    init: true
+    environment:
+      METRICS_PORT: 8888
+      SMALL_TASK_MIN_SIZE: 100
+      SMALL_TASK_MAX_SIZE: 1000

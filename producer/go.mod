@@ -1,4 +1,4 @@
-module largetasks
+module producer
 
 go 1.16
 
