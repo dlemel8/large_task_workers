@@ -8,8 +8,11 @@ services:
     environment:
       METRICS_PORT: 8888
       NUMBER_OF_WORKERS: 2
-      SMALL_TASK_MIN_SIZE: 100
-      SMALL_TASK_MAX_SIZE: 1000
+      LARGE_TASK_PERCENTAGE: 1
+      SMALL_TASK_MIN_SIZE: 0kb
+      SMALL_TASK_MAX_SIZE: 6kb
+      LARGE_TASK_MIN_SIZE: 100kb
+      LARGE_TASK_MAX_SIZE: 300kb
     expose:
       - 8888
     scale: 2

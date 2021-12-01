@@ -60,7 +60,7 @@ func main() {
 }
 
 func generateTasks(ctx context.Context, producerId string, workerId uint32) error {
-	largeTaskPercentage := viper.GetInt("large_task_percentage")
+	largeTaskPercentage := int(viper.GetUint32("large_task_percentage"))
 	largeTaskMinSize := int(viper.GetSizeInBytes("large_task_min_size"))
 	largeTaskMaxSize := int(viper.GetSizeInBytes("large_task_max_size"))
 	smallTaskMinSize := int(viper.GetSizeInBytes("small_task_min_size"))
