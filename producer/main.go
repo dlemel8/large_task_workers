@@ -19,16 +19,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"protos"
 )
 
 const sizeHeaderSizeInBytes = 4
-
-type taskMetadata struct {
-	producerId  string
-	workerId    uint32
-	taskId      uint64
-	generatedAt time.Time
-}
 
 var (
 	taskSizes = promauto.NewHistogram(prometheus.HistogramOpts{
@@ -72,11 +68,11 @@ func generateTasks(ctx context.Context, producerId string, workerId uint32) erro
 			return nil
 		}
 
-		metadata := taskMetadata{
-			producerId:  producerId,
-			workerId:    workerId,
-			taskId:      rand.Uint64(),
-			generatedAt: time.Now(),
+		metadata := protos.Metadata{
+			ProducerId:  producerId,
+			WorkerId:    workerId,
+			TaskId:      rand.Uint64(),
+			GeneratedAt: timestamppb.Now(),
 		}
 
 		isTaskLarge := rand.Intn(100) < largeTaskPercentage

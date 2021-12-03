@@ -1,0 +1,12 @@
+syntax = "proto3";
+package task;
+option go_package = "./;protos";
+
+import "google/protobuf/timestamp.proto";
+
+message Metadata {
+  string producerId = 1;
+  uint32 workerId = 2;
+  uint64 taskId = 3;
+  google.protobuf.Timestamp generatedAt = 4;
+}
