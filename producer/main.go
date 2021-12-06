@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	cryptoRand "crypto/rand"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -13,12 +11,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"protos"
@@ -33,6 +33,11 @@ var (
 	})
 )
 
+type task struct {
+	metadata *protos.Metadata
+	data     []byte
+}
+
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 	viper.AutomaticEnv()
@@ -45,17 +50,33 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	tasks := make(chan *task)
 	for i := 0; i < int(viper.GetUint32("number_of_workers")); i++ {
 		go func(workerId uint32) {
-			err := generateTasks(ctx, hostname, workerId)
-			exitIfError(err, "failed generate tasks")
+			exitIfError(generateTasks(ctx, hostname, workerId, tasks), "failed generate tasks")
 		}(uint32(i))
 	}
+
+	go func() {
+		exitIfError(publishTasks(ctx, tasks), "failed to publish tasks")
+	}()
 
 	<-ctx.Done()
 }
 
-func generateTasks(ctx context.Context, producerId string, workerId uint32) error {
+func exitIfError(err error, message string) {
+	if err != nil {
+		log.WithError(err).Fatal(message)
+	}
+}
+
+func servePrometheusMetrics(port uint16) {
+	http.Handle("/metrics", promhttp.Handler())
+	err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+	exitIfError(err, "failed to serve metrics")
+}
+
+func generateTasks(ctx context.Context, producerId string, workerId uint32, tasks chan<- *task) error {
 	largeTaskPercentage := int(viper.GetUint32("large_task_percentage"))
 	largeTaskMinSize := int(viper.GetSizeInBytes("large_task_min_size"))
 	largeTaskMaxSize := int(viper.GetSizeInBytes("large_task_max_size"))
@@ -68,7 +89,7 @@ func generateTasks(ctx context.Context, producerId string, workerId uint32) erro
 			return nil
 		}
 
-		metadata := protos.Metadata{
+		metadata := &protos.Metadata{
 			ProducerId:  producerId,
 			WorkerId:    workerId,
 			TaskId:      rand.Uint64(),
@@ -88,36 +109,55 @@ func generateTasks(ctx context.Context, producerId string, workerId uint32) erro
 			return errors.Wrap(err, "failed to create task data")
 		}
 
-		metadataBytes, err := json.Marshal(metadata)
-		if err != nil {
-			return errors.Wrap(err, "failed to encode task metadata")
+		tasks <- &task{
+			metadata: metadata,
+			data:     data,
 		}
-
-		finalData := append(data, metadataBytes...)
-		taskSizes.Observe(float64(len(finalData)))
 	}
-}
-
-func exitIfError(err error, message string) {
-	if err != nil {
-		log.WithError(err).Fatal(message)
-	}
-}
-
-func servePrometheusMetrics(port uint16) {
-	http.Handle("/metrics", promhttp.Handler())
-	err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
-	exitIfError(err, "failed to serve metrics")
 }
 
 func getTaskDataWithSizeHeader(minDataSize int, maxDataSize int) ([]byte, error) {
 	dataSize := minDataSize + rand.Intn(maxDataSize-minDataSize)
 	data := make([]byte, sizeHeaderSizeInBytes+dataSize)
 
-	if _, err := cryptoRand.Read(data[sizeHeaderSizeInBytes:cap(data)]); err != nil {
+	if _, err := rand.Read(data[sizeHeaderSizeInBytes:cap(data)]); err != nil {
 		return nil, errors.Wrap(err, "failed to generate task data")
 	}
 
 	binary.BigEndian.PutUint32(data[:sizeHeaderSizeInBytes], uint32(dataSize))
 	return data, nil
+}
+
+func publishTasks(ctx context.Context, tasks <-chan *task) error {
+	options, err := redis.ParseURL(viper.GetString("redis_url")) // "redis://:qwerty@localhost:6379/1?dial_timeout=5s"
+	if err != nil {
+		return errors.Wrap(err, "failed to connect to Redis")
+	}
+
+	client := redis.NewClient(options)
+	queueName := viper.GetString("published_tasks_queue_name")
+	queueMaxSize := viper.GetInt64("published_tasks_queue_max_size")
+	for {
+		select {
+		case <-ctx.Done():
+			break
+
+		case task := <-tasks:
+			metadataBytes, err := proto.Marshal(task.metadata)
+			if err != nil {
+				return errors.Wrap(err, "failed to marshal task metadata")
+			}
+
+			finalData := append(task.data, metadataBytes...)
+			taskSizes.Observe(float64(len(finalData)))
+
+			if err := client.RPush(ctx, queueName, finalData).Err(); err != nil {
+				return errors.Wrap(err, "failed to push to tasks queue")
+			}
+
+			if err := client.LTrim(ctx, queueName, 0, queueMaxSize).Err(); err != nil {
+				return errors.Wrap(err, "failed to trim tasks queue")
+			}
+		}
+	}
 }
