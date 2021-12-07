@@ -129,7 +129,7 @@ func getTaskDataWithSizeHeader(minDataSize int, maxDataSize int) ([]byte, error)
 }
 
 func publishTasks(ctx context.Context, tasks <-chan *task) error {
-	options, err := redis.ParseURL(viper.GetString("redis_url")) // "redis://:qwerty@localhost:6379/1?dial_timeout=5s"
+	options, err := redis.ParseURL(viper.GetString("redis_url"))
 	if err != nil {
 		return errors.Wrap(err, "failed to connect to Redis")
 	}
