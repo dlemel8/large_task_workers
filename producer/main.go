@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
+	config "github.com/spf13/viper"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -39,10 +39,11 @@ type task struct {
 }
 
 func main() {
+	log.Info("start to prepare workers")
 	rand.Seed(time.Now().UTC().UnixNano())
-	viper.AutomaticEnv()
+	config.AutomaticEnv()
 
-	go servePrometheusMetrics(uint16(viper.GetUint32("metrics_port")))
+	go servePrometheusMetrics(uint16(config.GetUint32("metrics_port")))
 
 	hostname, err := os.Hostname()
 	exitIfError(err, "failed to get hostname")
@@ -50,8 +51,9 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	tasks := make(chan *task)
-	for i := 0; i < int(viper.GetUint32("number_of_workers")); i++ {
+	numberOfWorkers := int(config.GetUint32("number_of_workers"))
+	tasks := make(chan *task, numberOfWorkers)
+	for i := 0; i < numberOfWorkers; i++ {
 		go func(workerId uint32) {
 			exitIfError(generateTasks(ctx, hostname, workerId, tasks), "failed generate tasks")
 		}(uint32(i))
@@ -61,7 +63,9 @@ func main() {
 		exitIfError(publishTasks(ctx, tasks), "failed to publish tasks")
 	}()
 
+	log.Info("everything is set")
 	<-ctx.Done()
+	log.Info("goodbye")
 }
 
 func exitIfError(err error, message string) {
@@ -74,18 +78,20 @@ func servePrometheusMetrics(port uint16) {
 	http.Handle("/metrics", promhttp.Handler())
 	err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 	exitIfError(err, "failed to serve metrics")
+	log.Info("start to serve metrics")
 }
 
 func generateTasks(ctx context.Context, producerId string, workerId uint32, tasks chan<- *task) error {
-	largeTaskPercentage := int(viper.GetUint32("large_task_percentage"))
-	largeTaskMinSize := int(viper.GetSizeInBytes("large_task_min_size"))
-	largeTaskMaxSize := int(viper.GetSizeInBytes("large_task_max_size"))
-	smallTaskMinSize := int(viper.GetSizeInBytes("small_task_min_size"))
-	smallTaskMaxSize := int(viper.GetSizeInBytes("small_task_max_size"))
+	largeTaskPercentage := int(config.GetUint32("large_task_percentage"))
+	largeTaskMinSize := int(config.GetSizeInBytes("large_task_min_size"))
+	largeTaskMaxSize := int(config.GetSizeInBytes("large_task_max_size"))
+	smallTaskMinSize := int(config.GetSizeInBytes("small_task_min_size"))
+	smallTaskMaxSize := int(config.GetSizeInBytes("small_task_max_size"))
 
+	log.WithField("workerId", workerId).Info("start to generate tasks")
 	for {
 		if ctx.Err() != nil {
-			log.Info("canceled")
+			log.WithField("workerId", workerId).Info("generate tasks canceled")
 			return nil
 		}
 
@@ -129,17 +135,20 @@ func getTaskDataWithSizeHeader(minDataSize int, maxDataSize int) ([]byte, error)
 }
 
 func publishTasks(ctx context.Context, tasks <-chan *task) error {
-	options, err := redis.ParseURL(viper.GetString("redis_url"))
+	options, err := redis.ParseURL(config.GetString("redis_url"))
 	if err != nil {
 		return errors.Wrap(err, "failed to connect to Redis")
 	}
 
 	client := redis.NewClient(options)
-	queueName := viper.GetString("published_tasks_queue_name")
-	queueMaxSize := viper.GetInt64("published_tasks_queue_max_size")
+	queueName := config.GetString("published_tasks_queue_name")
+	queueMaxSize := config.GetInt64("published_tasks_queue_max_size")
+
+	log.Info("start to publish tasks")
 	for {
 		select {
 		case <-ctx.Done():
+			log.Info("publish tasks cancelled")
 			break
 
 		case task := <-tasks:
