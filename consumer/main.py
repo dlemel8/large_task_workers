@@ -1,6 +1,8 @@
 import logging
+import signal
 from dataclasses import dataclass
 from struct import unpack
+from threading import Event
 
 from redis import from_url
 from vyper import v as config
@@ -8,7 +10,7 @@ from vyper import v as config
 from protos.task_pb2 import Metadata
 
 SIZE_HEADER_SIZE_IN_BYTES = 4
-GET_NEW_TASK_TIMEOUT_IN_SECONDS = 5
+GET_NEW_TASK_TIMEOUT_IN_SECONDS = 3
 LOGGER = logging.getLogger()
 
 
@@ -19,21 +21,24 @@ class Task:
 
 
 def main() -> None:
-    logging.basicConfig(format='%(asctime)-15s %(message)s')
+    logging.basicConfig(format='%(asctime)-15s %(message)s', level=logging.INFO)
     config.automatic_env()
     LOGGER.info('everything is set')
-    consume_tasks()
+    done = Event()
+    for signal_ in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(signal_, lambda _signum, _frame: done.set())
+    consume_tasks(done)
     LOGGER.info('goodbye')
 
 
-def consume_tasks() -> None:
+def consume_tasks(done: Event) -> None:
     redis_url = config.get_string('redis_url')
     client = from_url(redis_url)
 
     processing_tasks_queue_name = config.get_string('processing_tasks_queue_name')
     published_tasks_queue_name = config.get_string('published_tasks_queue_name')
     LOGGER.info('start to consume tasks')
-    while True:
+    while not done.is_set():
         for task_bytes in client.lrange(processing_tasks_queue_name, 0, -1):
             task = deserialize_task(memoryview(task_bytes))
             consume_task(task)
