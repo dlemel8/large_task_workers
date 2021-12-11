@@ -9,3 +9,9 @@ scrape_configs:
           - producer
         type: A
         port: 8888
+  - job_name: 'consumer'
+    dns_sd_configs:
+      - names:
+          - consumer
+        type: A
+        port: 8888

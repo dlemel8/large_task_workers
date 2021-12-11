@@ -21,7 +21,28 @@ services:
       PUBLISHED_TASKS_QUEUE_MAX_SIZE: 6500
     expose:
       - 8888
-    scale: 4
+    scale: 2
+
+  consumer:
+    build:
+      context: .
+      dockerfile: consumer/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      METRICS_PORT: 8888
+      NUMBER_OF_PROCESSORS: 3
+      PROCESSOR_MIN_DURATION_MS: 10
+      PROCESSOR_MAX_DURATION_MS: 20
+      SELECTOR_MIN_DURATION_MS: 10
+      SELECTOR_MAX_DURATION_MS: 20
+      REDIS_URL: redis://redis:6379
+      PUBLISHED_TASKS_QUEUE_NAME: tasks
+      PROCESSING_TASKS_QUEUE_NAME: processing
+    expose:
+      - 8888
+    scale: 2
 
   redis:
     image: redis:6.2.6-alpine3.15
