@@ -4,9 +4,14 @@ option go_package = "./;protos";
 
 import "google/protobuf/timestamp.proto";
 
+message Generated {
+  string by = 1;
+  google.protobuf.Timestamp at = 2;
+}
+
 message Metadata {
-  string producerId = 1;
-  uint32 workerId = 2;
-  uint64 taskId = 3;
-  google.protobuf.Timestamp generatedAt = 4;
+  uint64 taskId = 1;
+  Generated generated = 2;
+  map<string, uint32> counters = 3;
+  repeated string labels = 4;
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -19,7 +18,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	config "github.com/spf13/viper"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"protos"
 )
@@ -95,21 +93,16 @@ func generateTasks(ctx context.Context, producerId string, workerId uint32, task
 			return nil
 		}
 
-		metadata := &protos.Metadata{
-			ProducerId:  producerId,
-			WorkerId:    workerId,
-			TaskId:      rand.Uint64(),
-			GeneratedAt: timestamppb.Now(),
-		}
+		metadata := generateMetadata(producerId)
 
 		isTaskLarge := rand.Intn(100) < largeTaskPercentage
 
 		var data []byte
 		var err error
 		if isTaskLarge {
-			data, err = getTaskDataWithSizeHeader(largeTaskMinSize, largeTaskMaxSize)
+			data, err = generateTaskDataWithSizeHeader(largeTaskMinSize, largeTaskMaxSize)
 		} else {
-			data, err = getTaskDataWithSizeHeader(smallTaskMinSize, smallTaskMaxSize)
+			data, err = generateTaskDataWithSizeHeader(smallTaskMinSize, smallTaskMaxSize)
 		}
 		if err != nil {
 			return errors.Wrap(err, "failed to create task data")
@@ -120,18 +113,6 @@ func generateTasks(ctx context.Context, producerId string, workerId uint32, task
 			data:     data,
 		}
 	}
-}
-
-func getTaskDataWithSizeHeader(minDataSize int, maxDataSize int) ([]byte, error) {
-	dataSize := minDataSize + rand.Intn(maxDataSize-minDataSize)
-	data := make([]byte, sizeHeaderSizeInBytes+dataSize)
-
-	if _, err := rand.Read(data[sizeHeaderSizeInBytes:cap(data)]); err != nil {
-		return nil, errors.Wrap(err, "failed to generate task data")
-	}
-
-	binary.BigEndian.PutUint32(data[:sizeHeaderSizeInBytes], uint32(dataSize))
-	return data, nil
 }
 
 func publishTasks(ctx context.Context, tasks <-chan *task) error {
