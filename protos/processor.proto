@@ -1,0 +1,19 @@
+syntax = "proto3";
+package processor;
+option go_package = "./;protos";
+
+import "task.proto";
+
+service Processor {
+  rpc Process(ProcessQuery) returns (ProcessResult) {}
+}
+
+message ProcessQuery {
+  task.Metadata metadata = 1;
+  bytes data = 2;
+  string selectedProcessor = 3;
+}
+
+message ProcessResult {
+  bool success = 1;
+}
