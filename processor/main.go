@@ -59,8 +59,6 @@ func main() {
 		minDuration: config.GetDuration("external_processor_min_duration"),
 		maxDuration: config.GetDuration("external_processor_max_duration"),
 	}
-	log.Printf("DEBUGGGGGGGGGGGGGGGGGGGGGG %d %d", server.minDuration, server.maxDuration)
-	log.Printf("DEBUGGGGGGGGGGGGGGGGGGGGGG 1 %d %d", server.minDuration.Milliseconds(), server.maxDuration.Milliseconds())
 	serveGrpc(uint16(config.GetUint32("grpc_port")), server)
 }
 
