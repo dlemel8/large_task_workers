@@ -7,3 +7,6 @@ docker-compose*
 **/*.pb.go
 **/*_pb2.py
 **/*_pb2_grpc.py
+**/*.pyc
+**/__pycache__
+

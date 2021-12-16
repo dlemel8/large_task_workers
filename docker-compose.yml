@@ -30,17 +30,33 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      processor:
+        condition: service_healthy
     environment:
       METRICS_PORT: 8888
-      NUMBER_OF_PROCESSORS: 3
-      PROCESSOR_MIN_DURATION_MS:
-      PROCESSOR_MAX_DURATION_MS:
       SELECTOR_MIN_DURATION_MS:
       SELECTOR_MAX_DURATION_MS:
+      NUMBER_OF_PROCESSORS: 6
+      INTERNAL_PROCESSOR_MIN_DURATION_MS:
+      INTERNAL_PROCESSOR_MAX_DURATION_MS:
+      EXTERNAL_PROCESSOR_GRPC_URL: processor:7777
       REDIS_URL: redis://redis:6379
       PUBLISHED_TASKS_QUEUE_NAME: tasks
       PROCESSING_TASKS_QUEUE_NAME: processing
     expose:
+      - 8888
+    scale: 2
+
+  processor:
+    build:
+      context: .
+      dockerfile: processor/Dockerfile
+    environment:
+      METRICS_PORT: 8888
+      EXTERNAL_PROCESSOR_MIN_DURATION:
+      EXTERNAL_PROCESSOR_MAX_DURATION:
+    expose:
+      - 7777
       - 8888
     scale: 2
 
@@ -51,8 +67,6 @@ services:
       - 6379
     healthcheck:
       test: redis-cli ping
-    ports:
-      - 6379:6379
 
   prometheus:
     image: prom/prometheus:v2.1.0

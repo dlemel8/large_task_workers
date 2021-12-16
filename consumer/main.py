@@ -4,12 +4,14 @@ import signal
 import socket
 from struct import unpack
 from threading import Event
+from typing import Sequence
 
+import grpc
 from prometheus_client import start_http_server
 from redis import from_url
 from vyper import v as config
 
-from consumer.processor import Task, ProcessorSelector, Processor
+from consumer.processor import Task, ProcessorSelector, InternalProcessor, ExternalProcessor, Processor
 from protos.task_pb2 import Metadata
 
 SIZE_HEADER_SIZE_IN_BYTES = 4
@@ -28,10 +30,7 @@ def main() -> None:
     for signal_ in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signal_, lambda _signum, _frame: done.set())
 
-    processors = [
-        Processor(config.get_int('processor_min_duration_ms'), config.get_int('processor_max_duration_ms'))
-        for _ in range(config.get_int('number_of_processors'))
-    ]
+    processors = prepare_processors()
     selector = ProcessorSelector(
         processors,
         config.get_int('selector_min_duration_ms'),
@@ -39,6 +38,20 @@ def main() -> None:
     )
     consume_tasks(done, selector)
     LOGGER.info('goodbye')
+
+
+def prepare_processors() -> Sequence[Processor]:
+    internal_processor_min_duration_ms = config.get_int('internal_processor_min_duration_ms')
+    internal_processor_max_duration_ms = config.get_int('internal_processor_max_duration_ms')
+    processor_grpc_channel = grpc.insecure_channel(config.get_string('external_processor_grpc_url'))
+    res = []
+    for i in range(config.get_int('number_of_processors')):
+        res.append(
+            InternalProcessor(internal_processor_min_duration_ms, internal_processor_max_duration_ms)
+            if i % 2 == 0 else
+            ExternalProcessor(processor_grpc_channel)
+        )
+    return res
 
 
 def consume_tasks(done: Event, selector: ProcessorSelector) -> None:
@@ -67,7 +80,7 @@ def deserialize_task(task_bytes: memoryview) -> Task:
 
 def process_task(task: Task, selector: ProcessorSelector) -> None:
     processor = selector.select(task.data)
-    processor.run(task)
+    processor.process(task)
 
 
 if __name__ == '__main__':
