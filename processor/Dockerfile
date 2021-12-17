@@ -22,12 +22,12 @@ FROM golang:1.16.10-alpine3.14 AS builder
 ENV CGO_ENABLED=0
 ENV SERVICE_NAME=processor
 
-COPY --from=protos /defs protos
-
 WORKDIR ${SERVICE_NAME}
+COPY protos/go.mod ../protos/
 COPY ${SERVICE_NAME}/go.mod ${SERVICE_NAME}/go.sum ./
 RUN go mod download -x
 
+COPY --from=protos /defs/*.go ../protos/
 COPY ${SERVICE_NAME}/ .
 RUN go build -v -o /tmp/${SERVICE_NAME}
 

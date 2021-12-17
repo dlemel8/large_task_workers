@@ -83,6 +83,9 @@ class ProcessorSelector:
 
 
 def simulate_cpu_bound_work(min_duration_ms: float, max_duration_ms: float) -> None:
+    if max_duration_ms <= 0 or max_duration_ms - min_duration_ms <= 0:
+        return
+
     duration = random.uniform(min_duration_ms, max_duration_ms)
     start = time_ms()
     number = max_duration_ms

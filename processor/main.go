@@ -86,12 +86,22 @@ func serveGrpc(port uint16, server protos.ProcessorServer) {
 }
 
 func simulateCpuBoundWork(ctx context.Context, minDuration time.Duration, maxDuration time.Duration) error {
-	workDurationMs := minDuration.Milliseconds() + rand.Int63n(maxDuration.Milliseconds()-minDuration.Milliseconds())
+	minDurationMs := minDuration.Milliseconds()
+	if minDurationMs <= 0 {
+		minDurationMs = 0
+	}
+
+	maxDurationMS := maxDuration.Milliseconds()
+	if maxDurationMS <= 0 || maxDurationMS-minDurationMs <= 0 {
+		return nil
+	}
+
+	workDurationMs := minDurationMs + rand.Int63n(maxDurationMS-minDurationMs)
 	workDuration := time.Duration(workDurationMs) * time.Millisecond
 
 	var err error
 	startTime := time.Now()
-	number := maxDuration.Milliseconds()
+	number := maxDurationMS
 	for time.Since(startTime) < workDuration {
 		err = ctx.Err()
 		if err != nil {
