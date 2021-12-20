@@ -14,7 +14,7 @@ type Task struct {
 }
 
 type Reporter interface {
-	ProcessedJob(duration time.Duration, success bool)
+	ProcessedTask(duration time.Duration, success bool)
 }
 
 type TaskProcessor struct {
@@ -44,7 +44,7 @@ func (p *TaskProcessor) Process(ctx context.Context, task *Task) error {
 	timeSoFar := time.Since(startTime)
 	err := simulateCpuBoundWork(ctx, p.minDuration-timeSoFar, p.maxDuration-timeSoFar)
 
-	p.reporter.ProcessedJob(time.Since(startTime), err == nil)
+	p.reporter.ProcessedTask(time.Since(startTime), err == nil)
 	return err
 }
 

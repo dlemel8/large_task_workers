@@ -20,7 +20,7 @@ var (
 
 type Reporter struct{}
 
-func (r *Reporter) ProcessedJob(duration time.Duration, success bool) {
+func (r *Reporter) ProcessedTask(duration time.Duration, success bool) {
 	successStr := strconv.FormatBool(success)
 	value := float64(duration.Milliseconds())
 	processorDurations.WithLabelValues(successStr).Observe(value)

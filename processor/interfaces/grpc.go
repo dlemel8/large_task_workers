@@ -20,7 +20,7 @@ type processorServer struct {
 
 func (p *processorServer) Process(ctx context.Context, query *protos.ProcessQuery) (*protos.ProcessResult, error) {
 	err := p.service.Process(ctx, &application.Task{
-		Labels: query.Metadata.Labels,
+		Labels: query.Labels,
 		Data:   query.Data,
 	})
 

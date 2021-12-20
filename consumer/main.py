@@ -2,20 +2,19 @@ import logging
 import random
 import signal
 import socket
-from struct import unpack
 from threading import Event
 from typing import Sequence
 
 import grpc
-from prometheus_client import start_http_server
-from redis import from_url
 from vyper import v as config
 
-from consumer.processor import Task, ProcessorSelector, InternalProcessor, ExternalProcessor, Processor
-from protos.task_pb2 import Metadata
+from consumer.application.processor import ProcessorSelector, InternalProcessor, ExternalProcessor, Processor, \
+    TaskHandler
+from consumer.infrastructure.external_processor import ExternalProcessorGrpcClient
+from consumer.interfaces.prometheus import serve_prometheus_metrics, PrometheusSelectorReporter, \
+    PrometheusProcessorReporter
+from consumer.interfaces.task_consumer import RedisConsumer
 
-SIZE_HEADER_SIZE_IN_BYTES = 4
-GET_NEW_TASK_TIMEOUT_IN_SECONDS = 3
 LOGGER = logging.getLogger(__file__)
 
 
@@ -24,7 +23,8 @@ def main() -> None:
     LOGGER.info('start to prepare workers')
     random.seed()
     config.automatic_env()
-    start_http_server(config.get_int('metrics_port'))
+
+    serve_prometheus_metrics(config.get_int('metrics_port'))
 
     done = Event()
     for signal_ in (signal.SIGINT, signal.SIGTERM):
@@ -33,54 +33,37 @@ def main() -> None:
     processors = prepare_processors()
     selector = ProcessorSelector(
         processors,
-        config.get_int('selector_min_duration_ms'),
-        config.get_int('selector_max_duration_ms'),
+        config.get_float('selector_min_duration_ms'),
+        config.get_float('selector_max_duration_ms'),
+        PrometheusSelectorReporter()
     )
-    consume_tasks(done, selector)
+    handler = TaskHandler(selector)
+
+    consumer = RedisConsumer(
+        config.get_string('redis_url'),
+        '_'.join([config.get_string('processing_tasks_queue_name'), socket.gethostname()]),
+        config.get_string('published_tasks_queue_name'),
+        handler
+    )
+    consumer.consume_tasks(done)
+
     LOGGER.info('goodbye')
 
 
 def prepare_processors() -> Sequence[Processor]:
-    internal_processor_min_duration_ms = config.get_int('internal_processor_min_duration_ms')
-    internal_processor_max_duration_ms = config.get_int('internal_processor_max_duration_ms')
+    internal_processor_min_duration_ms = config.get_float('internal_processor_min_duration_ms')
+    internal_processor_max_duration_ms = config.get_float('internal_processor_max_duration_ms')
     processor_grpc_channel = grpc.insecure_channel(config.get_string('external_processor_grpc_url'))
+    processor_grpc_client = ExternalProcessorGrpcClient(processor_grpc_channel)
+    reporter = PrometheusProcessorReporter()
     res = []
     for i in range(config.get_int('number_of_processors')):
         res.append(
-            InternalProcessor(internal_processor_min_duration_ms, internal_processor_max_duration_ms)
+            InternalProcessor(internal_processor_min_duration_ms, internal_processor_max_duration_ms, reporter)
             if i % 2 == 0 else
-            ExternalProcessor(processor_grpc_channel)
+            ExternalProcessor(processor_grpc_client, reporter)
         )
     return res
-
-
-def consume_tasks(done: Event, selector: ProcessorSelector) -> None:
-    redis_url = config.get_string('redis_url')
-    client = from_url(redis_url)
-
-    processing_tasks_queue_name = '_'.join([config.get_string('processing_tasks_queue_name'), socket.gethostname()])
-    published_tasks_queue_name = config.get_string('published_tasks_queue_name')
-    LOGGER.info('start to consume tasks')
-    while not done.is_set():
-        for task_bytes in client.lrange(processing_tasks_queue_name, 0, -1):
-            task = deserialize_task(memoryview(task_bytes))
-            process_task(task, selector)
-
-        client.delete(processing_tasks_queue_name)
-        client.blmove(published_tasks_queue_name, processing_tasks_queue_name, GET_NEW_TASK_TIMEOUT_IN_SECONDS)
-
-
-def deserialize_task(task_bytes: memoryview) -> Task:
-    data_size, *_ = unpack('>L', task_bytes[:SIZE_HEADER_SIZE_IN_BYTES])
-    metadata_offset = SIZE_HEADER_SIZE_IN_BYTES + data_size
-    metadata = Metadata()
-    metadata.ParseFromString(task_bytes[metadata_offset:])
-    return Task(metadata, task_bytes[data_size:metadata_offset])
-
-
-def process_task(task: Task, selector: ProcessorSelector) -> None:
-    processor = selector.select(task.data)
-    processor.process(task)
 
 
 if __name__ == '__main__':
