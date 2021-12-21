@@ -13,7 +13,7 @@ import (
 
 var (
 	processorDurations = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "processor_durations",
+		Name:    "processor_durations_ms",
 		Buckets: prometheus.ExponentialBuckets(1, 10, 8),
 	}, []string{"success"})
 )

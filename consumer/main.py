@@ -13,7 +13,7 @@ from consumer.application.processor import ProcessorSelector, InternalProcessor,
 from consumer.infrastructure.external_processor import ExternalProcessorGrpcClient
 from consumer.interfaces.prometheus import serve_prometheus_metrics, PrometheusSelectorReporter, \
     PrometheusProcessorReporter
-from consumer.interfaces.task_consumer import RedisConsumer
+from consumer.interfaces.consumer import RedisConsumer
 
 LOGGER = logging.getLogger(__file__)
 

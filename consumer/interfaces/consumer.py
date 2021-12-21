@@ -1,4 +1,5 @@
 import logging
+from abc import ABC, abstractmethod
 from struct import unpack
 from threading import Event
 
@@ -12,9 +13,13 @@ SIZE_HEADER_SIZE_IN_BYTES = 4
 GET_NEW_TASK_TIMEOUT_IN_SECONDS = 3
 
 
-class TaskConsumer:
+class TaskConsumer(ABC):
     def __init__(self, handler: TaskHandler):
         self._handler = handler
+
+    @abstractmethod
+    def consume_tasks(self, done: Event) -> None:
+        raise NotImplementedError
 
     def _consume_task(self, task_bytes: memoryview):
         start_time = time_ms()
