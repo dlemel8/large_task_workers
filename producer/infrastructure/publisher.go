@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
@@ -95,35 +94,4 @@ func (p *TaskPublisher) serializeTask(task *application.Task) ([]byte, error) {
 
 	finalData := append(task.Data, metadataBytes...)
 	return finalData, err
-}
-
-type RedisPublisher struct {
-	client       *redis.Client
-	queueName    string
-	queueMaxSize int64
-}
-
-func NewRedisPublisher(redisUrl string, queueName string, queueMaxSize int64) (*RedisPublisher, error) {
-	options, err := redis.ParseURL(redisUrl)
-	if err != nil {
-		return nil, err
-	}
-
-	return &RedisPublisher{
-		client:       redis.NewClient(options),
-		queueName:    queueName,
-		queueMaxSize: queueMaxSize,
-	}, nil
-}
-
-func (p *RedisPublisher) Publish(ctx context.Context, bytes []byte) error {
-	if err := p.client.RPush(ctx, p.queueName, bytes).Err(); err != nil {
-		return errors.Wrap(err, "failed to push to tasks queue")
-	}
-
-	if err := p.client.LTrim(ctx, p.queueName, 0, p.queueMaxSize).Err(); err != nil {
-		return errors.Wrap(err, "failed to trim tasks queue")
-	}
-
-	return nil
 }

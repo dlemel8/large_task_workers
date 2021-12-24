@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -14,6 +15,11 @@ import (
 	"producer/application"
 	"producer/infrastructure"
 	"producer/interfaces"
+)
+
+const (
+	strategyMetadataAndDanaInRedis    = "MetadataAndDataInRedis"
+	strategyMetadataAndDanaInRabbitMq = "MetadataAndDataInRabbitMQ"
 )
 
 func main() {
@@ -44,20 +50,38 @@ func main() {
 		),
 	)
 
-	redisPublisher, err := infrastructure.NewRedisPublisher(
-		config.GetString("redis_url"),
-		config.GetString("published_tasks_queue_name"),
-		config.GetInt64("published_tasks_queue_max_size"),
-	)
-	exitIfError(err, "failed to connect to Redis")
+	bytesPublisher, err := initializeBytesPublisher()
+	exitIfError(err, "failed to initialize bytes publisher")
 
-	tasksPublisher := infrastructure.NewTaskPublisher(hostname, generator, redisPublisher, reporter)
+	tasksPublisher := infrastructure.NewTaskPublisher(hostname, generator, bytesPublisher, reporter)
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	err = tasksPublisher.Publish(ctx)
 	exitIfError(err, "failed to publish tasks")
 
 	log.Info("goodbye")
+}
+
+func initializeBytesPublisher() (infrastructure.BytesPublisher, error) {
+	publishedTasksQueueName := config.GetString("published_tasks_queue_name")
+	publishedTasksQueueMaxSize := config.GetInt64("published_tasks_queue_max_size")
+	strategy := config.GetString("strategy")
+	switch strategy {
+	case strategyMetadataAndDanaInRedis:
+		return infrastructure.NewRedisPublisher(
+			config.GetString("redis_url"),
+			publishedTasksQueueName,
+			publishedTasksQueueMaxSize,
+		)
+	case strategyMetadataAndDanaInRabbitMq:
+		return infrastructure.NewRabbitMqPublisher(
+			config.GetString("rabbitmq_url"),
+			publishedTasksQueueName,
+			publishedTasksQueueMaxSize,
+		)
+	default:
+		return nil, fmt.Errorf("invalid strategy %s", strategy)
+	}
 }
 
 func exitIfError(err error, message string) {
