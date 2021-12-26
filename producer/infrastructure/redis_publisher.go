@@ -28,8 +28,13 @@ func NewRedisPublisher(redisUrl string, queueName string, queueMaxSize int64) (*
 }
 
 func (p *RedisPublisher) Publish(ctx context.Context, bytes []byte) error {
-	if err := p.client.RPush(ctx, p.queueName, bytes).Err(); err != nil {
+	val, err := p.client.RPush(ctx, p.queueName, bytes).Result()
+	if err != nil {
 		return errors.Wrap(err, "failed to push to tasks queue")
+	}
+
+	if val < p.queueMaxSize {
+		return nil
 	}
 
 	if err := p.client.LTrim(ctx, p.queueName, 0, p.queueMaxSize).Err(); err != nil {

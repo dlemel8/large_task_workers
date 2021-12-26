@@ -1,7 +1,24 @@
 version: '3.9'
+x-monitored: &monitored-service
+  environment: &monitored-env
+    METRICS_PORT: 8888
+  expose:
+    - 8888
+x-messaging: &messaging-service
+  depends_on: &messaging-depends
+    redis:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+  environment: &messaging-env
+    PUBLISHED_TASKS_QUEUE_NAME: tasks
+    REDIS_URL: redis://redis:6379
+    RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
 
 services:
   producer:
+    <<: *monitored-service
+    <<: *messaging-service
     build:
       context: .
       dockerfile: producer/Dockerfile
@@ -11,56 +28,49 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
-      METRICS_PORT: 8888
+      <<: *monitored-env
+      <<: *messaging-env
       STRATEGY:
       LARGE_TASK_PERCENTAGE:
       SMALL_TASK_MIN_SIZE:
       SMALL_TASK_MAX_SIZE:
       LARGE_TASK_MIN_SIZE:
       LARGE_TASK_MAX_SIZE:
-      REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
-      PUBLISHED_TASKS_QUEUE_NAME: tasks
       PUBLISHED_TASKS_QUEUE_MAX_SIZE: 2000
-    expose:
-      - 8888
     scale: 2
 
   consumer:
+    <<: *monitored-service
     build:
       context: .
       dockerfile: consumer/Dockerfile
     depends_on:
+      <<: *messaging-depends
       redis:
         condition: service_healthy
       processor:
         condition: service_healthy
     environment:
-      METRICS_PORT: 8888
+      <<: *monitored-env
+      <<: *messaging-env
       SELECTOR_MIN_DURATION_MS:
       SELECTOR_MAX_DURATION_MS:
       NUMBER_OF_PROCESSORS: 6
       INTERNAL_PROCESSOR_MIN_DURATION_MS:
       INTERNAL_PROCESSOR_MAX_DURATION_MS:
       EXTERNAL_PROCESSOR_GRPC_URL: processor:7777
-      REDIS_URL: redis://redis:6379
-      PUBLISHED_TASKS_QUEUE_NAME: tasks
       PROCESSING_TASKS_QUEUE_NAME: processing
-    expose:
-      - 8888
     scale: 2
 
   processor:
+    <<: *monitored-service
     build:
       context: .
       dockerfile: processor/Dockerfile
     environment:
-      METRICS_PORT: 8888
+      <<: *monitored-env
       EXTERNAL_PROCESSOR_MIN_DURATION:
       EXTERNAL_PROCESSOR_MAX_DURATION:
-    expose:
-      - 7777
-      - 8888
     scale: 2
 
   redis:
