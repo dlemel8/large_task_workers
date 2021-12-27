@@ -2,6 +2,7 @@ import logging
 import random
 import signal
 import socket
+from enum import Enum
 from threading import Event
 from typing import Sequence
 
@@ -11,11 +12,18 @@ from vyper import v as config
 from consumer.application.processor import ProcessorSelector, InternalProcessor, ExternalProcessor, Processor, \
     TaskHandler
 from consumer.infrastructure.external_processor import ExternalProcessorGrpcClient
+from consumer.interfaces.consumer import TaskConsumer
 from consumer.interfaces.prometheus import serve_prometheus_metrics, PrometheusSelectorReporter, \
     PrometheusProcessorReporter
-from consumer.interfaces.consumer import RedisConsumer
+from consumer.interfaces.rabbitmq_consumer import RabbitMqConsumer
+from consumer.interfaces.redis_consumer import RedisConsumer
 
 LOGGER = logging.getLogger(__file__)
+
+
+class Strategy(Enum):
+    METADATA_AND_DATA_IN_REDIS = 'MetadataAndDataInRedis'
+    METADATA_AND_DATA_IN_RABBITMQ = 'MetadataAndDataInRabbitMQ'
 
 
 def main() -> None:
@@ -39,13 +47,9 @@ def main() -> None:
     )
     handler = TaskHandler(selector)
 
-    consumer = RedisConsumer(
-        config.get_string('redis_url'),
-        '_'.join([config.get_string('processing_tasks_queue_name'), socket.gethostname()]),
-        config.get_string('published_tasks_queue_name'),
-        handler
-    )
+    consumer = prepare_consumer(handler)
     consumer.consume_tasks(done)
+    consumer.close()
 
     LOGGER.info('goodbye')
 
@@ -64,6 +68,28 @@ def prepare_processors() -> Sequence[Processor]:
             ExternalProcessor(processor_grpc_client, reporter)
         )
     return res
+
+
+def prepare_consumer(handler: TaskHandler) -> TaskConsumer:
+    published_tasks_queue_name = config.get_string('published_tasks_queue_name')
+    strategy = config.get_string('strategy')
+    if strategy == Strategy.METADATA_AND_DATA_IN_REDIS.value:
+        return RedisConsumer(
+            config.get_string('redis_url'),
+            '_'.join([config.get_string('processing_tasks_queue_name'), socket.gethostname()]),
+            published_tasks_queue_name,
+            handler,
+        )
+
+    if strategy == Strategy.METADATA_AND_DATA_IN_RABBITMQ.value:
+        return RabbitMqConsumer(
+            config.get_string('rabbitmq_url'),
+            published_tasks_queue_name,
+            config.get_int('published_tasks_queue_max_size'),
+            handler,
+        )
+
+    raise Exception(f'unsupported {strategy=}')
 
 
 if __name__ == '__main__':

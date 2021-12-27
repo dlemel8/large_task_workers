@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	strategyMetadataAndDanaInRedis    = "MetadataAndDataInRedis"
-	strategyMetadataAndDanaInRabbitMq = "MetadataAndDataInRabbitMQ"
+	strategyMetadataAndDataInRedis    = "MetadataAndDataInRedis"
+	strategyMetadataAndDataInRabbitMq = "MetadataAndDataInRabbitMQ"
 )
 
 func main() {
@@ -67,13 +67,13 @@ func initializeBytesPublisher() (infrastructure.BytesPublisher, error) {
 	publishedTasksQueueMaxSize := config.GetInt64("published_tasks_queue_max_size")
 	strategy := config.GetString("strategy")
 	switch strategy {
-	case strategyMetadataAndDanaInRedis:
+	case strategyMetadataAndDataInRedis:
 		return infrastructure.NewRedisPublisher(
 			config.GetString("redis_url"),
 			publishedTasksQueueName,
 			publishedTasksQueueMaxSize,
 		)
-	case strategyMetadataAndDanaInRabbitMq:
+	case strategyMetadataAndDataInRabbitMq:
 		return infrastructure.NewRabbitMqPublisher(
 			config.GetString("rabbitmq_url"),
 			publishedTasksQueueName,
