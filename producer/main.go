@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	strategyMetadataAndDataInRedis               = "MetadataAndDataInRedis"
-	strategyMetadataAndDataInRabbitMq            = "MetadataAndDataInRabbitMq"
-	strategyMetadataInRabbitMqAndDataInDirectory = "MetadataInRabbitMqAndDataInDirectory"
+	strategyMetadataAndDataInRedis          = "MetadataAndDataInRedis"
+	strategyMetadataAndDataInRabbitMq       = "MetadataAndDataInRabbitMq"
+	strategyMetadataInRabbitMqAndDataInFile = "MetadataInRabbitMqAndDataInFile"
 )
 
 func main() {
@@ -36,8 +36,12 @@ func main() {
 	hostname, err := os.Hostname()
 	exitIfError(err, "failed to get hostname")
 
-	bytesPublisher, err := initializeBytesPublisher()
+	strategy := config.GetString("strategy")
+	bytesPublisher, err := initializeBytesPublisher(strategy)
 	exitIfError(err, "failed to initialize bytes publisher")
+
+	fileStore, err := infrastructure.NewFileStore(config.GetString("file_store_path"))
+	exitIfError(err, "failed to initialize file store")
 
 	reporter := new(interfaces.Reporter)
 	generator := application.NewTasksGenerator(
@@ -55,7 +59,7 @@ func main() {
 					reporter,
 				),
 			),
-			infrastructure.NewRepository(hostname, bytesPublisher),
+			infrastructure.NewRepository(hostname, bytesPublisher, fileStore),
 		),
 		reporter,
 	)
@@ -63,14 +67,13 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	generator.Generate(ctx, true)
+	generator.Generate(ctx, strategy != strategyMetadataInRabbitMqAndDataInFile)
 	log.Info("goodbye")
 }
 
-func initializeBytesPublisher() (infrastructure.BytesPublisher, error) {
+func initializeBytesPublisher(strategy string) (infrastructure.BytesPublisher, error) {
 	publishedTasksQueueName := config.GetString("published_tasks_queue_name")
 	publishedTasksQueueMaxSize := config.GetInt64("published_tasks_queue_max_size")
-	strategy := config.GetString("strategy")
 	switch strategy {
 	case strategyMetadataAndDataInRedis:
 		return infrastructure.NewRedisPublisher(
@@ -79,6 +82,8 @@ func initializeBytesPublisher() (infrastructure.BytesPublisher, error) {
 			publishedTasksQueueMaxSize,
 		)
 	case strategyMetadataAndDataInRabbitMq:
+		fallthrough
+	case strategyMetadataInRabbitMqAndDataInFile:
 		return infrastructure.NewRabbitMqPublisher(
 			config.GetString("rabbitmq_url"),
 			publishedTasksQueueName,

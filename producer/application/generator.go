@@ -9,8 +9,9 @@ import (
 
 type TaskRepository interface {
 	SaveWholeTask(ctx context.Context, task *Task) error
-	SaveTaskData(ctx context.Context, data []byte) (location string, err error)
-	SaveTaskMetadata(ctx context.Context, metadata *TaskMetadata, dataLocation string) error
+	SaveTaskData(ctx context.Context, taskId uint64, data []byte) (key string, err error)
+	SaveTaskMetadata(ctx context.Context, metadata *TaskMetadata, dataKey string) error
+	DeleteTaskData(ctx context.Context, dataKey string) error
 }
 
 type TaskGenerator struct {
@@ -35,12 +36,18 @@ func (g *TaskGenerator) Generate(ctx context.Context, saveWholeTask bool) error 
 		return g.repository.SaveWholeTask(ctx, task)
 	}
 
-	location, err := g.repository.SaveTaskData(ctx, task.Data)
+	key, err := g.repository.SaveTaskData(ctx, task.Metadata.Id, task.Data)
 	if err != nil {
 		return err
 	}
 
-	return g.repository.SaveTaskMetadata(ctx, task.Metadata, location)
+	err = g.repository.SaveTaskMetadata(ctx, task.Metadata, key)
+	if err != nil {
+		if deleteErr := g.repository.DeleteTaskData(ctx, key); err != nil {
+			log.WithError(deleteErr).Error("failed to delete data after save metadata failure")
+		}
+	}
+	return err
 }
 
 type GeneratedTaskReporter interface {
@@ -71,6 +78,9 @@ func (g *TasksGenerator) Generate(ctx context.Context, saveWholeTask bool) {
 
 		startTime := time.Now()
 		err = g.generator.Generate(ctx, saveWholeTask)
+		if err != nil {
+			log.WithError(err).Error("failed to generate task")
+		}
 		g.reporter.GeneratedTask(time.Since(startTime), err == nil)
 	}
 }

@@ -15,10 +15,23 @@ x-messaging: &messaging-service
     PUBLISHED_TASKS_QUEUE_MAX_SIZE: 2000
     REDIS_URL: redis://redis:6379
     RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+x-file-store: &file-store-service
+  volumes:
+    - file_store:/file_store
+  environment: &file-store-env
+    FILE_STORE_PATH: /file_store
+
+volumes:
+  file_store:
+    driver_opts:
+      type: tmpfs
+      o: "size=1g"
+      device: tmpfs
 
 services:
   producer:
     <<: *monitored-service
+    <<: *file-store-service
     <<: *messaging-service
     build:
       context: .
@@ -30,6 +43,7 @@ services:
         condition: service_healthy
     environment:
       <<: *monitored-env
+      <<: *file-store-env
       <<: *messaging-env
       STRATEGY:
       LARGE_TASK_PERCENTAGE:
@@ -41,6 +55,7 @@ services:
 
   consumer:
     <<: *monitored-service
+    <<: *file-store-service
     build:
       context: .
       dockerfile: consumer/Dockerfile
@@ -52,6 +67,7 @@ services:
         condition: service_healthy
     environment:
       <<: *monitored-env
+      <<: *file-store-env
       <<: *messaging-env
       STRATEGY:
       SELECTOR_MIN_DURATION_MS:
