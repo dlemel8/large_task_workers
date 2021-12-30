@@ -23,7 +23,7 @@ LOGGER = logging.getLogger(__file__)
 
 class Strategy(Enum):
     METADATA_AND_DATA_IN_REDIS = 'MetadataAndDataInRedis'
-    METADATA_AND_DATA_IN_RABBITMQ = 'MetadataAndDataInRabbitMQ'
+    METADATA_AND_DATA_IN_RABBITMQ = 'MetadataAndDataInRabbitMq'
 
 
 def main() -> None:

@@ -12,28 +12,28 @@ import (
 )
 
 var (
-	generateTaskSizes = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "generated_task_sizes",
+	randomizedDataSizes = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "randomized_data_sizes",
 		Buckets: prometheus.ExponentialBuckets(1, 10, 8),
 	}, []string{"success"})
-	publishDurationsMs = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "publish_durations_ms",
+	generatedTaskDurationsMs = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "generated_task_durations_ms",
 		Buckets: prometheus.ExponentialBuckets(1, 10, 8),
 	}, []string{"success"})
 )
 
 type Reporter struct{}
 
-func (r *Reporter) GenerateTaskData(dataSize int, success bool) {
+func (r *Reporter) RandomizedData(size int, success bool) {
 	successStr := strconv.FormatBool(success)
-	value := float64(dataSize)
-	generateTaskSizes.WithLabelValues(successStr).Observe(value)
+	value := float64(size)
+	randomizedDataSizes.WithLabelValues(successStr).Observe(value)
 }
 
-func (r *Reporter) PublishDuration(duration time.Duration, success bool) {
+func (r *Reporter) GeneratedTask(duration time.Duration, success bool) {
 	successStr := strconv.FormatBool(success)
 	value := float64(duration.Milliseconds())
-	publishDurationsMs.WithLabelValues(successStr).Observe(value)
+	generatedTaskDurationsMs.WithLabelValues(successStr).Observe(value)
 }
 
 func ServePrometheusMetrics(port uint16) error {

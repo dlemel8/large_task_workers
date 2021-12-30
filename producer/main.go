@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	strategyMetadataAndDataInRedis    = "MetadataAndDataInRedis"
-	strategyMetadataAndDataInRabbitMq = "MetadataAndDataInRabbitMQ"
+	strategyMetadataAndDataInRedis               = "MetadataAndDataInRedis"
+	strategyMetadataAndDataInRabbitMq            = "MetadataAndDataInRabbitMq"
+	strategyMetadataInRabbitMqAndDataInDirectory = "MetadataInRabbitMqAndDataInDirectory"
 )
 
 func main() {
@@ -35,30 +36,34 @@ func main() {
 	hostname, err := os.Hostname()
 	exitIfError(err, "failed to get hostname")
 
-	reporter := new(interfaces.Reporter)
-	generator := application.NewTaskGenerator(
-		int(config.GetUint32("large_task_percentage")),
-		application.NewDataGenerator(
-			int(config.GetSizeInBytes("large_task_min_size")),
-			int(config.GetSizeInBytes("large_task_max_size")),
-			reporter,
-		),
-		application.NewDataGenerator(
-			int(config.GetSizeInBytes("small_task_min_size")),
-			int(config.GetSizeInBytes("small_task_max_size")),
-			reporter,
-		),
-	)
-
 	bytesPublisher, err := initializeBytesPublisher()
 	exitIfError(err, "failed to initialize bytes publisher")
 
-	tasksPublisher := infrastructure.NewTaskPublisher(hostname, generator, bytesPublisher, reporter)
+	reporter := new(interfaces.Reporter)
+	generator := application.NewTasksGenerator(
+		application.NewTaskGenerator(
+			application.NewTaskRandomize(
+				int(config.GetUint32("large_task_percentage")),
+				application.NewDataRandomize(
+					int(config.GetSizeInBytes("large_task_min_size")),
+					int(config.GetSizeInBytes("large_task_max_size")),
+					reporter,
+				),
+				application.NewDataRandomize(
+					int(config.GetSizeInBytes("small_task_min_size")),
+					int(config.GetSizeInBytes("small_task_max_size")),
+					reporter,
+				),
+			),
+			infrastructure.NewRepository(hostname, bytesPublisher),
+		),
+		reporter,
+	)
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-	err = tasksPublisher.Publish(ctx)
-	exitIfError(err, "failed to publish tasks")
 
+	generator.Generate(ctx, true)
 	log.Info("goodbye")
 }
 
