@@ -3,7 +3,7 @@ import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import reduce
-from typing import Sequence
+from typing import Sequence, Optional
 
 from time import time
 
@@ -13,8 +13,15 @@ Milliseconds = float
 
 
 @dataclass
-class Task:
+class TaskMetadata:
+    task_id: int
     labels: Sequence[str]
+    data_key: Optional[str]
+
+
+@dataclass
+class Task:
+    metadata: TaskMetadata
     data: memoryview
 
 
@@ -45,7 +52,7 @@ class InternalProcessor(Processor):
         self._max_duration = max_duration
 
     def _process(self, task: Task, start_time: Milliseconds) -> bool:
-        modulo_divisor = len(task.labels)
+        modulo_divisor = len(task.metadata.labels)
         value = reduce(lambda x, y: (x * y) % modulo_divisor, task.data)
         LOGGER.debug('task value is %d', value)
 
@@ -96,15 +103,6 @@ class ProcessorSelector:
 
         self._reporter.selected_processor(time_ms() - start_time)
         return self._processors[processor_id]
-
-
-class TaskHandler:
-    def __init__(self, selector: ProcessorSelector):
-        self._selector = selector
-
-    def handle(self, task: Task) -> None:
-        processor = self._selector.select(task.data)
-        processor.process(task)
 
 
 def simulate_cpu_bound_work(min_duration: Milliseconds, max_duration: Milliseconds) -> None:

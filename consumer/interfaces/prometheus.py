@@ -9,12 +9,10 @@ SELECTOR_DURATIONS = Histogram('selector_duration_ms', '', buckets=HISTOGRAM_BUC
 PROCESSOR_DURATIONS = Histogram('processor_duration_ms', '', labelnames=('type', 'success'), buckets=HISTOGRAM_BUCKETS)
 
 
-class PrometheusSelectorReporter(SelectorReporter):
+class PrometheusReporter(SelectorReporter, ProcessorReporter):
     def selected_processor(self, took: Milliseconds) -> None:
         SELECTOR_DURATIONS.observe(took)
 
-
-class PrometheusProcessorReporter(ProcessorReporter):
     def processed_task(self, took: Milliseconds, type_: str, success: bool) -> None:
         PROCESSOR_DURATIONS.labels(type=type_, success=str(success)).observe(took)
 

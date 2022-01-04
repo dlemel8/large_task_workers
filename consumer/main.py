@@ -3,20 +3,22 @@ import random
 import signal
 import socket
 from enum import Enum
+from pathlib import Path
 from threading import Event
-from typing import Sequence
+from typing import Sequence, Callable
 
 import grpc
 from vyper import v as config
 
+from consumer.application.handler import TaskHandler
 from consumer.application.processor import ProcessorSelector, InternalProcessor, ExternalProcessor, Processor, \
-    TaskHandler
+    ProcessorReporter
 from consumer.infrastructure.external_processor import ExternalProcessorGrpcClient
-from consumer.interfaces.consumer import TaskConsumer
-from consumer.interfaces.prometheus import serve_prometheus_metrics, PrometheusSelectorReporter, \
-    PrometheusProcessorReporter
+from consumer.infrastructure.file_store import FileStore
+from consumer.interfaces.prometheus import serve_prometheus_metrics, PrometheusReporter
 from consumer.interfaces.rabbitmq_consumer import RabbitMqConsumer
 from consumer.interfaces.redis_consumer import RedisConsumer
+from consumer.interfaces.task_consumer import TaskConsumer
 
 LOGGER = logging.getLogger(__file__)
 
@@ -24,6 +26,7 @@ LOGGER = logging.getLogger(__file__)
 class Strategy(Enum):
     METADATA_AND_DATA_IN_REDIS = 'MetadataAndDataInRedis'
     METADATA_AND_DATA_IN_RABBITMQ = 'MetadataAndDataInRabbitMq'
+    METADATA_IN_RABBIT_MQ_AND_DATA_IN_FILE = 'MetadataInRabbitMqAndDataInFile'
 
 
 def main() -> None:
@@ -38,28 +41,32 @@ def main() -> None:
     for signal_ in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signal_, lambda _signum, _frame: done.set())
 
-    processors = prepare_processors()
-    selector = ProcessorSelector(
-        processors,
-        config.get_float('selector_min_duration_ms'),
-        config.get_float('selector_max_duration_ms'),
-        PrometheusSelectorReporter()
+    reporter = PrometheusReporter()
+    processors = prepare_processors(reporter)
+    consumer = TaskConsumer(
+        TaskHandler(
+            ProcessorSelector(
+                processors,
+                config.get_float('selector_min_duration_ms'),
+                config.get_float('selector_max_duration_ms'),
+                reporter
+            ),
+            FileStore(Path(config.get_string('file_store_path'))),
+        )
     )
-    handler = TaskHandler(selector)
 
-    consumer = prepare_consumer(handler)
-    consumer.consume_tasks(done)
-    consumer.close()
+    strategy = Strategy(config.get_string('strategy'))
+    consumer_callback = select_consumer_callback(strategy, consumer)
+    run_consumer(strategy, done, consumer_callback)
 
     LOGGER.info('goodbye')
 
 
-def prepare_processors() -> Sequence[Processor]:
+def prepare_processors(reporter: ProcessorReporter) -> Sequence[Processor]:
     internal_processor_min_duration_ms = config.get_float('internal_processor_min_duration_ms')
     internal_processor_max_duration_ms = config.get_float('internal_processor_max_duration_ms')
     processor_grpc_channel = grpc.insecure_channel(config.get_string('external_processor_grpc_url'))
     processor_grpc_client = ExternalProcessorGrpcClient(processor_grpc_channel)
-    reporter = PrometheusProcessorReporter()
     res = []
     for i in range(config.get_int('number_of_processors')):
         res.append(
@@ -70,26 +77,37 @@ def prepare_processors() -> Sequence[Processor]:
     return res
 
 
-def prepare_consumer(handler: TaskHandler) -> TaskConsumer:
+def select_consumer_callback(strategy: Strategy, consumer: TaskConsumer) -> Callable[[memoryview], None]:
+    if strategy in (Strategy.METADATA_AND_DATA_IN_REDIS, Strategy.METADATA_AND_DATA_IN_RABBITMQ):
+        return consumer.consume_internal_data_task
+
+    if strategy == Strategy.METADATA_IN_RABBIT_MQ_AND_DATA_IN_FILE:
+        return consumer.consume_external_data_task
+
+    raise ValueError(f'unsupported {strategy=}')
+
+
+def run_consumer(strategy: Strategy, done: Event, callback: Callable[[memoryview], None]) -> None:
     published_tasks_queue_name = config.get_string('published_tasks_queue_name')
-    strategy = config.get_string('strategy')
-    if strategy == Strategy.METADATA_AND_DATA_IN_REDIS.value:
-        return RedisConsumer(
+    if strategy == Strategy.METADATA_AND_DATA_IN_REDIS:
+        consumer = RedisConsumer(
             config.get_string('redis_url'),
             '_'.join([config.get_string('processing_tasks_queue_name'), socket.gethostname()]),
             published_tasks_queue_name,
-            handler,
         )
-
-    if strategy == Strategy.METADATA_AND_DATA_IN_RABBITMQ.value:
-        return RabbitMqConsumer(
+    elif strategy in (Strategy.METADATA_AND_DATA_IN_RABBITMQ, Strategy.METADATA_IN_RABBIT_MQ_AND_DATA_IN_FILE):
+        consumer = RabbitMqConsumer(
             config.get_string('rabbitmq_url'),
             published_tasks_queue_name,
             config.get_int('published_tasks_queue_max_size'),
-            handler,
         )
+    else:
+        raise ValueError(f'unsupported {strategy=}')
 
-    raise Exception(f'unsupported {strategy=}')
+    try:
+        consumer.consume_tasks(done, callback)
+    finally:
+        consumer.close()
 
 
 if __name__ == '__main__':

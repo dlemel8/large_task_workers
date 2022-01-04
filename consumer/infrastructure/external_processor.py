@@ -11,6 +11,6 @@ class ExternalProcessorGrpcClient(ExternalProcessorClient):
 
     def process(self, task: Task) -> bool:
         client = ProcessorStub(self._channel)
-        query = ProcessQuery(labels=task.labels, data=task.data.tobytes())
+        query = ProcessQuery(labels=task.metadata.labels, data=task.data.tobytes())
         result = client.Process(query)
         return result.success

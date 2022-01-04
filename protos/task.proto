@@ -14,4 +14,5 @@ message Metadata {
   Generated generated = 2;
   map<string, uint32> counters = 3;
   repeated string labels = 4;
+  optional string dataKey = 5;
 }

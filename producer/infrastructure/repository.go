@@ -35,7 +35,7 @@ func NewRepository(id string, publisher BytesPublisher, store BytesStore) *Repos
 }
 
 func (r *Repository) SaveWholeTask(ctx context.Context, task *application.Task) error {
-	metadataBytes, err := r.serializeTaskMetadata(task.Metadata)
+	metadataBytes, err := r.serializeTaskMetadata(task.Metadata, nil)
 	if err != nil {
 		return err
 	}
@@ -51,7 +51,7 @@ func (r *Repository) SaveTaskData(_ context.Context, taskId uint64, data []byte)
 }
 
 func (r *Repository) SaveTaskMetadata(ctx context.Context, metadata *application.TaskMetadata, dataKey string) error {
-	metadataBytes, err := r.serializeTaskMetadata(metadata)
+	metadataBytes, err := r.serializeTaskMetadata(metadata, &dataKey)
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ type TaskPublisher struct {
 	generator *application.TaskRandomizer
 }
 
-func (r *Repository) serializeTaskMetadata(metadata *application.TaskMetadata) ([]byte, error) {
+func (r *Repository) serializeTaskMetadata(metadata *application.TaskMetadata, dataKey *string) ([]byte, error) {
 	protoMetadata := &protos.Metadata{
 		TaskId: metadata.Id,
 		Generated: &protos.Generated{
@@ -75,6 +75,10 @@ func (r *Repository) serializeTaskMetadata(metadata *application.TaskMetadata) (
 		},
 		Counters: metadata.Counters,
 		Labels:   metadata.Labels,
+	}
+
+	if dataKey != nil {
+		protoMetadata.DataKey = dataKey
 	}
 
 	return proto.Marshal(protoMetadata)
