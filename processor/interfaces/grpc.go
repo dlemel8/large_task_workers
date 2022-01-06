@@ -15,26 +15,28 @@ import (
 )
 
 type processorServer struct {
-	service *application.TaskProcessor
+	handler *application.TaskHandler
 }
 
-func (p *processorServer) Process(ctx context.Context, query *protos.ProcessQuery) (*protos.ProcessResult, error) {
-	err := p.service.Process(ctx, &application.Task{
-		Labels: query.Labels,
-		Data:   query.Data,
-	})
+func (s *processorServer) ProcessInternalDataTask(ctx context.Context, query *protos.InternalDataQuery) (*protos.ProcessResult, error) {
+	err := s.handler.HandleInternalTaskData(ctx, query.Labels, query.Data)
+	return &protos.ProcessResult{Success: err == nil}, nil
+}
+
+func (s *processorServer) ProcessExternalDataTask(ctx context.Context, query *protos.ExternalDataQuery) (*protos.ProcessResult, error) {
+	err := s.handler.HandleExternalTaskData(ctx, query.Labels, query.DataKey)
 
 	return &protos.ProcessResult{Success: err == nil}, nil
 }
 
-func ServeGrpc(port uint16, service *application.TaskProcessor) error {
+func ServeGrpc(port uint16, handler *application.TaskHandler) error {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return errors.Wrap(err, "failed to listen on grpc address")
 	}
 
 	grpcServer := grpc.NewServer()
-	protos.RegisterProcessorServer(grpcServer, &processorServer{service: service})
+	protos.RegisterProcessorServer(grpcServer, &processorServer{handler: handler})
 	grpc_health_v1.RegisterHealthServer(grpcServer, health.NewServer())
 	return grpcServer.Serve(listener)
 }

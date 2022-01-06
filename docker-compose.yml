@@ -81,11 +81,13 @@ services:
 
   processor:
     <<: *monitored-service
+    <<: *file-store-service
     build:
       context: .
       dockerfile: processor/Dockerfile
     environment:
       <<: *monitored-env
+      <<: *file-store-env
       EXTERNAL_PROCESSOR_MIN_DURATION:
       EXTERNAL_PROCESSOR_MAX_DURATION:
     scale: 2

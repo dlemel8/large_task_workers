@@ -8,6 +8,7 @@ import (
 	config "github.com/spf13/viper"
 
 	"processor/application"
+	"processor/infrastructure"
 	"processor/interfaces"
 )
 
@@ -21,13 +22,19 @@ func main() {
 		exitIfError(err, "failed to serve metrics")
 	}()
 
-	taskProcessor := application.NewTaskProcessor(
-		config.GetDuration("external_processor_min_duration"),
-		config.GetDuration("external_processor_max_duration"),
-		new(interfaces.Reporter),
+	fileStore, err := infrastructure.NewFileStore(config.GetString("file_store_path"))
+	exitIfError(err, "failed to initialize file store")
+
+	taskHandler := application.NewTaskHandler(
+		application.NewTaskProcessor(
+			config.GetDuration("external_processor_min_duration"),
+			config.GetDuration("external_processor_max_duration"),
+			new(interfaces.Reporter),
+		),
+		fileStore,
 	)
 
-	err := interfaces.ServeGrpc(uint16(config.GetUint32("grpc_port")), taskProcessor)
+	err = interfaces.ServeGrpc(uint16(config.GetUint32("grpc_port")), taskHandler)
 	exitIfError(err, "failed to serve grpc")
 }
 

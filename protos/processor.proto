@@ -3,12 +3,18 @@ package processor;
 option go_package = "./;protos";
 
 service Processor {
-  rpc Process(ProcessQuery) returns (ProcessResult) {}
+  rpc ProcessInternalDataTask(InternalDataQuery) returns (ProcessResult) {}
+  rpc ProcessExternalDataTask(ExternalDataQuery) returns (ProcessResult) {}
 }
 
-message ProcessQuery {
+message InternalDataQuery {
   repeated string labels = 1;
   bytes data = 2;
+}
+
+message ExternalDataQuery {
+  repeated string labels = 1;
+  string dataKey = 2;
 }
 
 message ProcessResult {
