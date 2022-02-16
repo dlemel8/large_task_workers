@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -12,11 +13,19 @@ import (
 	"processor/application"
 )
 
+type FileLoadStrategy string
+
+const (
+	Syscall FileLoadStrategy = "Syscall"
+	Mmap                     = "Mmap"
+)
+
 type FileStore struct {
 	directory string
+	strategy  FileLoadStrategy
 }
 
-func NewFileStore(directory string) (*FileStore, error) {
+func NewFileStore(directory string, strategy FileLoadStrategy) (*FileStore, error) {
 	fileInfo, err := os.Stat(directory)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check directory %s information", directory)
@@ -30,7 +39,19 @@ func NewFileStore(directory string) (*FileStore, error) {
 		return nil, fmt.Errorf("%s is not readable", directory)
 	}
 
-	return &FileStore{directory: directory}, nil
+	return &FileStore{directory: directory, strategy: strategy}, nil
+}
+
+type loadedData struct {
+	data []byte
+}
+
+func (d *loadedData) Close() error {
+	return nil
+}
+
+func (d *loadedData) Data() []byte {
+	return d.data
 }
 
 type mmapedData struct {
@@ -54,18 +75,29 @@ func (d *mmapedData) Close() error {
 func (s *FileStore) Load(key string) (application.ClosableData, error) {
 	filePath := filepath.Join(s.directory, key)
 
-	file, err := os.OpenFile(filePath, os.O_RDWR, 0777)
+	file, err := os.OpenFile(filePath, os.O_RDONLY, 0777)
 	if err != nil {
 		return nil, err
 	}
 
-	mmapped, err := mmap.Map(file, mmap.RDWR, 0)
-	if err != nil {
-		return nil, err
-	}
+	switch s.strategy {
+	case Syscall:
+		data, err := io.ReadAll(file)
+		if err != nil {
+			return nil, err
+		}
 
-	return &mmapedData{
-		data: mmapped,
-		file: file,
-	}, nil
+		return &loadedData{data: data}, nil
+
+	case Mmap:
+		mmapped, err := mmap.Map(file, mmap.RDONLY, 0)
+		if err != nil {
+			return nil, err
+		}
+
+		return &mmapedData{data: mmapped, file: file}, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported strategy %s", s.strategy)
+	}
 }

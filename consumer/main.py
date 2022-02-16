@@ -14,7 +14,7 @@ from consumer.application.handler import TaskHandler
 from consumer.application.processor import ProcessorSelector, InternalProcessor, ExternalProcessor, Processor, \
     ProcessorReporter
 from consumer.infrastructure.external_processor import ExternalProcessorGrpcClient
-from consumer.infrastructure.file_store import FileStore
+from consumer.infrastructure.file_store import FileStore, FileLoadStrategy
 from consumer.interfaces.prometheus import serve_prometheus_metrics, PrometheusReporter
 from consumer.interfaces.rabbitmq_consumer import RabbitMqConsumer
 from consumer.interfaces.redis_consumer import RedisConsumer
@@ -23,7 +23,7 @@ from consumer.interfaces.task_consumer import TaskConsumer
 LOGGER = logging.getLogger(__file__)
 
 
-class Strategy(Enum):
+class MessagingStrategy(Enum):
     METADATA_AND_DATA_IN_REDIS = 'MetadataAndDataInRedis'
     METADATA_AND_DATA_IN_RABBITMQ = 'MetadataAndDataInRabbitMq'
     METADATA_IN_RABBIT_MQ_AND_DATA_IN_FILE = 'MetadataInRabbitMqAndDataInFile'
@@ -51,13 +51,16 @@ def main() -> None:
                 config.get_float('selector_max_duration_ms'),
                 reporter
             ),
-            FileStore(Path(config.get_string('file_store_path'))),
+            FileStore(
+                Path(config.get_string('file_store_path')),
+                FileLoadStrategy(config.get_string('file_load_strategy')),
+            ),
         )
     )
 
-    strategy = Strategy(config.get_string('strategy'))
-    consumer_callback = select_consumer_callback(strategy, consumer)
-    run_consumer(strategy, done, consumer_callback)
+    messaging_strategy = MessagingStrategy(config.get_string('messaging_strategy'))
+    consumer_callback = select_consumer_callback(messaging_strategy, consumer)
+    run_consumer(messaging_strategy, done, consumer_callback)
 
     LOGGER.info('goodbye')
 
@@ -77,25 +80,26 @@ def prepare_processors(reporter: ProcessorReporter) -> Sequence[Processor]:
     return res
 
 
-def select_consumer_callback(strategy: Strategy, consumer: TaskConsumer) -> Callable[[memoryview], None]:
-    if strategy in (Strategy.METADATA_AND_DATA_IN_REDIS, Strategy.METADATA_AND_DATA_IN_RABBITMQ):
+def select_consumer_callback(strategy: MessagingStrategy, consumer: TaskConsumer) -> Callable[[memoryview], None]:
+    if strategy in (MessagingStrategy.METADATA_AND_DATA_IN_REDIS, MessagingStrategy.METADATA_AND_DATA_IN_RABBITMQ):
         return consumer.consume_internal_data_task
 
-    if strategy == Strategy.METADATA_IN_RABBIT_MQ_AND_DATA_IN_FILE:
+    if strategy == MessagingStrategy.METADATA_IN_RABBIT_MQ_AND_DATA_IN_FILE:
         return consumer.consume_external_data_task
 
     raise ValueError(f'unsupported {strategy=}')
 
 
-def run_consumer(strategy: Strategy, done: Event, callback: Callable[[memoryview], None]) -> None:
+def run_consumer(strategy: MessagingStrategy, done: Event, callback: Callable[[memoryview], None]) -> None:
     published_tasks_queue_name = config.get_string('published_tasks_queue_name')
-    if strategy == Strategy.METADATA_AND_DATA_IN_REDIS:
+    if strategy == MessagingStrategy.METADATA_AND_DATA_IN_REDIS:
         consumer = RedisConsumer(
             config.get_string('redis_url'),
             '_'.join([config.get_string('processing_tasks_queue_name'), socket.gethostname()]),
             published_tasks_queue_name,
         )
-    elif strategy in (Strategy.METADATA_AND_DATA_IN_RABBITMQ, Strategy.METADATA_IN_RABBIT_MQ_AND_DATA_IN_FILE):
+    elif strategy in (MessagingStrategy.METADATA_AND_DATA_IN_RABBITMQ,
+                      MessagingStrategy.METADATA_IN_RABBIT_MQ_AND_DATA_IN_FILE):
         consumer = RabbitMqConsumer(
             config.get_string('rabbitmq_url'),
             published_tasks_queue_name,

@@ -17,10 +17,12 @@ import (
 	"producer/interfaces"
 )
 
+type MessagingStrategy string
+
 const (
-	strategyMetadataAndDataInRedis          = "MetadataAndDataInRedis"
-	strategyMetadataAndDataInRabbitMq       = "MetadataAndDataInRabbitMq"
-	strategyMetadataInRabbitMqAndDataInFile = "MetadataInRabbitMqAndDataInFile"
+	metadataAndDataInRedis          MessagingStrategy = "MetadataAndDataInRedis"
+	metadataAndDataInRabbitMq                         = "MetadataAndDataInRabbitMq"
+	metadataInRabbitMqAndDataInFile                   = "MetadataInRabbitMqAndDataInFile"
 )
 
 func main() {
@@ -36,7 +38,7 @@ func main() {
 	hostname, err := os.Hostname()
 	exitIfError(err, "failed to get hostname")
 
-	strategy := config.GetString("strategy")
+	strategy := MessagingStrategy(config.GetString("messaging_strategy"))
 	bytesPublisher, err := initializeBytesPublisher(strategy)
 	exitIfError(err, "failed to initialize bytes publisher")
 
@@ -67,30 +69,30 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	generator.Generate(ctx, strategy != strategyMetadataInRabbitMqAndDataInFile)
+	generator.Generate(ctx, strategy != metadataInRabbitMqAndDataInFile)
 	log.Info("goodbye")
 }
 
-func initializeBytesPublisher(strategy string) (infrastructure.BytesPublisher, error) {
+func initializeBytesPublisher(strategy MessagingStrategy) (infrastructure.BytesPublisher, error) {
 	publishedTasksQueueName := config.GetString("published_tasks_queue_name")
 	publishedTasksQueueMaxSize := config.GetInt64("published_tasks_queue_max_size")
 	switch strategy {
-	case strategyMetadataAndDataInRedis:
+	case metadataAndDataInRedis:
 		return infrastructure.NewRedisPublisher(
 			config.GetString("redis_url"),
 			publishedTasksQueueName,
 			publishedTasksQueueMaxSize,
 		)
-	case strategyMetadataAndDataInRabbitMq:
+	case metadataAndDataInRabbitMq:
 		fallthrough
-	case strategyMetadataInRabbitMqAndDataInFile:
+	case metadataInRabbitMqAndDataInFile:
 		return infrastructure.NewRabbitMqPublisher(
 			config.GetString("rabbitmq_url"),
 			publishedTasksQueueName,
 			publishedTasksQueueMaxSize,
 		)
 	default:
-		return nil, fmt.Errorf("invalid strategy %s", strategy)
+		return nil, fmt.Errorf("unsupported messaging strategy %s", strategy)
 	}
 }
 

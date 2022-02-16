@@ -22,7 +22,10 @@ func main() {
 		exitIfError(err, "failed to serve metrics")
 	}()
 
-	fileStore, err := infrastructure.NewFileStore(config.GetString("file_store_path"))
+	fileStore, err := infrastructure.NewFileStore(
+		config.GetString("file_store_path"),
+		infrastructure.FileLoadStrategy(config.GetString("file_load_strategy")),
+	)
 	exitIfError(err, "failed to initialize file store")
 
 	taskHandler := application.NewTaskHandler(
