@@ -22,6 +22,7 @@ type MessagingStrategy string
 const (
 	metadataAndDataInRedis          MessagingStrategy = "MetadataAndDataInRedis"
 	metadataAndDataInRabbitMq                         = "MetadataAndDataInRabbitMq"
+	metadataAndDataInNng                              = "MetadataAndDataInNng"
 	metadataInRabbitMqAndDataInFile                   = "MetadataInRabbitMqAndDataInFile"
 )
 
@@ -91,6 +92,12 @@ func initializeBytesPublisher(strategy MessagingStrategy) (infrastructure.BytesP
 			publishedTasksQueueName,
 			publishedTasksQueueMaxSize,
 		)
+	case metadataAndDataInNng:
+		return infrastructure.NewNanoMsgPublisher(
+			config.GetString("nng_url"),
+			publishedTasksQueueMaxSize,
+		)
+
 	default:
 		return nil, fmt.Errorf("unsupported messaging strategy %s", strategy)
 	}

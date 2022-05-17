@@ -12,7 +12,7 @@ FROM python:3.9.9-alpine3.14
 ENV SERVICE_NAME=consumer
 WORKDIR /app
 
-RUN apk add --no-cache build-base linux-headers
+RUN apk add --no-cache build-base cmake gcc libc-dev libffi-dev linux-headers perl
 
 COPY ${SERVICE_NAME}/requirements.txt ${SERVICE_NAME}/
 RUN pip install --no-cache-dir -r ${SERVICE_NAME}/requirements.txt

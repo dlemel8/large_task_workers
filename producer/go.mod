@@ -9,6 +9,7 @@ require (
 	github.com/rabbitmq/amqp091-go v1.2.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/viper v1.9.0
+	go.nanomsg.org/mangos/v3 v3.3.0
 	google.golang.org/protobuf v1.27.1
 	protos v0.0.0
 )

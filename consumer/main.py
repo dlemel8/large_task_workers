@@ -15,6 +15,7 @@ from consumer.application.processor import ProcessorSelector, InternalProcessor,
     ProcessorReporter
 from consumer.infrastructure.external_processor import ExternalProcessorGrpcClient
 from consumer.infrastructure.file_store import FileStore, FileLoadStrategy
+from consumer.interfaces.nng_consumer import NanoMsgNgConsumer
 from consumer.interfaces.prometheus import serve_prometheus_metrics, PrometheusReporter
 from consumer.interfaces.rabbitmq_consumer import RabbitMqConsumer
 from consumer.interfaces.redis_consumer import RedisConsumer
@@ -26,6 +27,7 @@ LOGGER = logging.getLogger(__file__)
 class MessagingStrategy(Enum):
     METADATA_AND_DATA_IN_REDIS = 'MetadataAndDataInRedis'
     METADATA_AND_DATA_IN_RABBITMQ = 'MetadataAndDataInRabbitMq'
+    METADATA_AND_DATA_IN_NNG = 'MetadataAndDataInNng'
     METADATA_IN_RABBIT_MQ_AND_DATA_IN_FILE = 'MetadataInRabbitMqAndDataInFile'
 
 
@@ -81,7 +83,9 @@ def prepare_processors(reporter: ProcessorReporter) -> Sequence[Processor]:
 
 
 def select_consumer_callback(strategy: MessagingStrategy, consumer: TaskConsumer) -> Callable[[memoryview], None]:
-    if strategy in (MessagingStrategy.METADATA_AND_DATA_IN_REDIS, MessagingStrategy.METADATA_AND_DATA_IN_RABBITMQ):
+    if strategy in (MessagingStrategy.METADATA_AND_DATA_IN_REDIS,
+                    MessagingStrategy.METADATA_AND_DATA_IN_RABBITMQ,
+                    MessagingStrategy.METADATA_AND_DATA_IN_NNG):
         return consumer.consume_internal_data_task
 
     if strategy == MessagingStrategy.METADATA_IN_RABBIT_MQ_AND_DATA_IN_FILE:
@@ -105,6 +109,8 @@ def run_consumer(strategy: MessagingStrategy, done: Event, callback: Callable[[m
             published_tasks_queue_name,
             config.get_int('published_tasks_queue_max_size'),
         )
+    elif strategy == MessagingStrategy.METADATA_AND_DATA_IN_NNG:
+        consumer = NanoMsgNgConsumer(config.get_string('nng_url'))
     else:
         raise ValueError(f'unsupported {strategy=}')
 

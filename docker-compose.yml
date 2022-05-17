@@ -16,6 +16,7 @@ x-messaging: &messaging-service
     PUBLISHED_TASKS_QUEUE_MAX_SIZE: 2000
     REDIS_URL: redis://redis:6379
     RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    NNG_URL: tcp://producer:9999
 x-file-store: &file-store-service
   volumes:
     - file_store:/file_store
@@ -38,11 +39,6 @@ services:
     build:
       context: .
       dockerfile: producer/Dockerfile
-    depends_on:
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
     environment:
       <<: *monitored-env
       <<: *file-store-env
@@ -62,8 +58,6 @@ services:
       dockerfile: consumer/Dockerfile
     depends_on:
       <<: *messaging-depends
-      redis:
-        condition: service_healthy
       processor:
         condition: service_healthy
     environment:
