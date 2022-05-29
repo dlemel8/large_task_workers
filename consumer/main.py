@@ -99,7 +99,6 @@ def run_consumer(strategy: MessagingStrategy, done: Event, callback: Callable[[m
     if strategy == MessagingStrategy.METADATA_AND_DATA_IN_REDIS:
         consumer = RedisConsumer(
             config.get_string('redis_url'),
-            '_'.join([config.get_string('processing_tasks_queue_name'), socket.gethostname()]),
             published_tasks_queue_name,
         )
     elif strategy in (MessagingStrategy.METADATA_AND_DATA_IN_RABBITMQ,

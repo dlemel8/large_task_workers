@@ -31,12 +31,12 @@ class RabbitMqConsumer:
 
     def consume_tasks(self, done: Event, callback: Callable[[memoryview], None]) -> None:
         LOGGER.info('start to consume tasks')
-        for method_frame, _, body in self._channel.consume(self._published_tasks_queue_name):
+        for *_, body in self._channel.consume(self._published_tasks_queue_name, auto_ack=True):
             callback(memoryview(body))
-            self._channel.basic_ack(method_frame.delivery_tag)
             if done.is_set():
                 break
 
+        LOGGER.info('consume tasks was cancelled')
         self._channel.cancel()
 
     def close(self) -> None:

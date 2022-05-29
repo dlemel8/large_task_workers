@@ -72,7 +72,6 @@ services:
       INTERNAL_PROCESSOR_MIN_DURATION_MS:
       INTERNAL_PROCESSOR_MAX_DURATION_MS:
       EXTERNAL_PROCESSOR_GRPC_URL: processor:7777
-      PROCESSING_TASKS_QUEUE_NAME: processing
     scale: 4
 
   processor:
