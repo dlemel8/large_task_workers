@@ -16,7 +16,7 @@ x-messaging: &messaging-service
     PUBLISHED_TASKS_QUEUE_MAX_SIZE: 2000
     REDIS_URL: redis://redis:6379
     RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
-    NNG_URL: tcp://producer:9999
+    NNG_TCP_PORT: 9999
 x-file-store: &file-store-service
   volumes:
     - file_store:/file_store
@@ -34,8 +34,8 @@ volumes:
 services:
   producer:
     <<: *monitored-service
-    <<: *file-store-service
     <<: *messaging-service
+    <<: *file-store-service
     build:
       context: .
       dockerfile: producer/Dockerfile
@@ -48,10 +48,12 @@ services:
       SMALL_TASK_MAX_SIZE:
       LARGE_TASK_MIN_SIZE:
       LARGE_TASK_MAX_SIZE:
-    scale: 1
+      NNG_CONSUMER_ENDPOINT: consumer
+    scale: 2
 
   consumer:
     <<: *monitored-service
+    <<: *messaging-service
     <<: *file-store-service
     build:
       context: .
@@ -84,7 +86,7 @@ services:
       <<: *file-store-env
       EXTERNAL_PROCESSOR_MIN_DURATION:
       EXTERNAL_PROCESSOR_MAX_DURATION:
-    scale: 1
+    scale: 2
 
   redis:
     image: redis:6.2.6-alpine3.15

@@ -110,7 +110,7 @@ def run_consumer(strategy: MessagingStrategy, done: Event, callback: Callable[[m
             config.get_int('published_tasks_queue_max_size'),
         )
     elif strategy == MessagingStrategy.METADATA_AND_DATA_IN_NNG:
-        consumer = NanoMsgNgConsumer(config.get_string('nng_url'))
+        consumer = NanoMsgNgConsumer(config.get_string('nng_tcp_port'))
     else:
         raise ValueError(f'unsupported {strategy=}')
 

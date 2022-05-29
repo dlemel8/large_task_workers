@@ -94,7 +94,8 @@ func initializeBytesPublisher(strategy MessagingStrategy) (infrastructure.BytesP
 		)
 	case metadataAndDataInNng:
 		return infrastructure.NewNanoMsgPublisher(
-			config.GetString("nng_url"),
+			config.GetString("nng_consumer_endpoint"),
+			uint16(config.GetUint32("nng_tcp_port")),
 			publishedTasksQueueMaxSize,
 		)
 
